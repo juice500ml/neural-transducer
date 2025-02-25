@@ -50,6 +50,7 @@ class Arch(util.NamedEnum):
     universaltransformer = "universaltransformer"
     tagtransformer = "tagtransformer"
     taguniversaltransformer = "taguniversaltransformer"
+    ctctransformer = "ctctransformer"
 
 
 class Trainer(BaseTrainer):
@@ -192,6 +193,7 @@ class Trainer(BaseTrainer):
             Arch.universaltransformer: transformer.UniversalTransformer,
             Arch.tagtransformer: transformer.TagTransformer,
             Arch.taguniversaltransformer: transformer.TagUniversalTransformer,
+            Arch.ctctransformer: transformer.CTCTransformer
         }
         # fmt: on
         if params.indtag or params.mono:
@@ -264,7 +266,7 @@ class Trainer(BaseTrainer):
         self.model.eval()
         cnt = 0
         sampler, nb_batch = self.iterate_batch(mode, batch_size)
-        with open(f"{write_fp}.{mode}.tsv", "w") as fp:
+        with open(f"{write_fp}.{mode}.tsv", "w") as fp, open(f"{write_fp}.{mode}.txt", "w") as fp2:
             fp.write("prediction\ttarget\tloss\tdist\n")
             for src, src_mask, trg, trg_mask in tqdm(
                 sampler(batch_size), total=nb_batch
@@ -282,6 +284,7 @@ class Trainer(BaseTrainer):
                     p = self.data.decode_target(p)
                     t = self.data.decode_target(t)
                     fp.write(f'{" ".join(p)}\t{" ".join(t)}\t{loss.item()}\t{dist}\n')
+                    fp2.write(f'{"".join(p)}\n')
                     cnt += 1
         self.logger.info(f"finished decoding {cnt} {mode} instance")
         results = self.evaluator.compute(reset=True)

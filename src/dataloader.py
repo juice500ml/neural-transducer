@@ -287,9 +287,11 @@ class SIGMORPHON2017Task1(Seq2SeqDataLoader):
                     continue
                 toks = line.split("\t")
                 if len(toks) != 3:
-                    print("WARNING: missing tokens", toks)
-                    continue
-                lemma, word, tags = toks
+                    # test set
+                    lemma, tags = toks
+                    word = lemma
+                else:
+                    lemma, word, tags = toks
                 yield list(lemma), list(word), tags.split(";")
 
     def _iter_helper(self, file):

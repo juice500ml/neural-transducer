@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from dataloader import PAD_IDX
+from dataloader import PAD_IDX, UNK_IDX
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -98,7 +98,7 @@ class TransformerEncoderLayer(nn.Module):
 
         self.activation = {"relu": F.relu, "gelu": F.gelu}[activation]
 
-    def forward(self, src, src_mask=None, src_key_padding_mask=None):
+    def forward(self, src, src_mask=None, src_key_padding_mask=None, is_causal=False):
         r"""Pass the input through the endocder layer.
 
         Args:
@@ -111,7 +111,7 @@ class TransformerEncoderLayer(nn.Module):
         if self.normalize_before:
             src = self.norm1(src)
         src = self.self_attn(
-            src, src, src, attn_mask=src_mask, key_padding_mask=src_key_padding_mask
+            src, src, src, attn_mask=src_mask, key_padding_mask=src_key_padding_mask, is_causal=is_causal,
         )[0]
         src = residual + self.dropout(src)
         if not self.normalize_before:
@@ -167,6 +167,8 @@ class TransformerDecoderLayer(nn.Module):
         memory_mask=None,
         tgt_key_padding_mask=None,
         memory_key_padding_mask=None,
+        tgt_is_causal=False,
+        memory_is_causal=False,
     ):
         r"""Pass the inputs (and mask) through the decoder layer.
 
@@ -183,7 +185,12 @@ class TransformerDecoderLayer(nn.Module):
         if self.normalize_before:
             tgt = self.norm1(tgt)
         tgt = self.self_attn(
-            tgt, tgt, tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask
+            tgt,
+            tgt,
+            tgt,
+            attn_mask=tgt_mask,
+            key_padding_mask=tgt_key_padding_mask,
+            is_causal=tgt_is_causal,
         )[0]
         tgt = residual + self.dropout(tgt)
         if not self.normalize_before:
@@ -198,6 +205,7 @@ class TransformerDecoderLayer(nn.Module):
             memory,
             attn_mask=memory_mask,
             key_padding_mask=memory_key_padding_mask,
+            is_causal=memory_is_causal,
         )[0]
         tgt = residual + self.dropout(tgt)
         if not self.normalize_before:
@@ -384,6 +392,35 @@ class TagTransformer(Transformer):
         pos_embed = self.position_embed(src_batch * char_mask)
         embed = self.dropout(word_embed + pos_embed + special_embed)
         return embed
+
+
+class CTCTransformer(Transformer):
+    def decode(self, enc_hs, src_mask, trg_batch, trg_mask):
+        return F.log_softmax(self.final_out(enc_hs), dim=-1)
+
+    def forward(self, src_batch, src_mask, trg_batch, trg_mask):
+        """
+        only for training
+        """
+        src_mask = (src_mask == 0).transpose(0, 1)
+        enc_hs = self.encode(src_batch, src_mask)
+        output = self.decode(enc_hs, src_mask, trg_batch, trg_mask)
+        return output
+
+    def get_loss(self, data, reduction=True):
+        src, src_mask, trg, trg_mask = data
+        out = self.forward(src, src_mask, trg, trg_mask)
+        import pdb; pdb.set_trace()
+        loss = F.ctc_loss(
+            log_probs=out,
+            targets=trg.T,
+            input_lengths=src_mask.sum(0, dtype=int),
+            target_lengths=trg_mask.sum(0, dtype=int),
+            blank=UNK_IDX,
+            reduction="mean" if reduction else "none",
+            zero_infinity=False,
+        )
+        return loss
 
 
 class UniversalTransformerEncoder(nn.Module):

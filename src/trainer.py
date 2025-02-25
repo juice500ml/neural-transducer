@@ -335,7 +335,7 @@ class BaseTrainer(object):
             self.logger.info(f'DEV {model_fp.split("/")[-1]} {results}')
 
         if self.data.test_file is not None:
-            self.calc_loss(TEST, batch_size, -1)
+            # self.calc_loss(TEST, batch_size, -1)
             self.logger.info("decoding test set")
             results = self.decode(TEST, batch_size, f"{model_fp}.decode", decode_fn)
             if results:
